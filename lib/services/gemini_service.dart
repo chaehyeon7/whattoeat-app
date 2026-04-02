@@ -44,8 +44,8 @@ class GeminiService {
 당신은 요리 추천 전문가입니다. 친근하게 추천해주세요.
 
 [조건]
-- 무게감: $weight
-- 종류: $cuisine
+${weight != '상관없음' ? '- 무게감: $weight' : ''}
+${cuisine != '상관없음' ? '- 종류: $cuisine' : '- 종류: 아무거나 OK'}
 ${price != null ? '- 가격대: $price' : ''}
 
 [냉장고 재료]
