@@ -112,7 +112,11 @@ class _RecommendScreenState extends State<RecommendScreen> {
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('추천 실패: $e'), behavior: SnackBarBehavior.floating),
+          SnackBar(
+            content: Text('$e'),
+            behavior: SnackBarBehavior.floating,
+            duration: const Duration(seconds: 5),
+          ),
         );
       }
     } finally {
