@@ -1,16 +1,14 @@
-# whattoeat
+# 뭐먹지 (WhatToEat)
 
-A new Flutter project.
+AI 기반 점심 메뉴 추천 앱
 
-## Getting Started
+## 기능
+- 🥕 냉장고 재료 관리
+- 🎰 AI 메뉴 추천 (사먹기 + 해먹기)
+- 📍 내 주변 음식점 연동
 
-This project is a starting point for a Flutter application.
-
-A few resources to get you started if this is your first Flutter project:
-
-- [Lab: Write your first Flutter app](https://docs.flutter.dev/get-started/codelab)
-- [Cookbook: Useful Flutter samples](https://docs.flutter.dev/cookbook)
-
-For help getting started with Flutter development, view the
-[online documentation](https://docs.flutter.dev/), which offers tutorials,
-samples, guidance on mobile development, and a full API reference.
+## 기술 스택
+- Flutter
+- Gemini API (AI 추천)
+- 카카오 로컬 API (음식점 검색)
+- Firebase (DB/인증)
