@@ -42,7 +42,6 @@ class _FridgeScreenState extends State<FridgeScreen> {
   void _addIngredient() {
     final name = _controller.text.trim();
     if (name.isEmpty) return;
-
     setState(() {
       _ingredients.add({'name': name, 'category': _selectedCategory});
       _controller.clear();
@@ -63,109 +62,186 @@ class _FridgeScreenState extends State<FridgeScreen> {
     }
 
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('🥕 냉장고'),
-        centerTitle: true,
-      ),
-      body: Column(
-        children: [
-          // 재료 입력 영역
-          Padding(
-            padding: const EdgeInsets.all(16),
-            child: Row(
-              children: [
-                // 카테고리 선택
-                DropdownButton<String>(
-                  value: _selectedCategory,
-                  items: _categories
-                      .map((c) => DropdownMenuItem(value: c, child: Text(c)))
-                      .toList(),
-                  onChanged: (v) => setState(() => _selectedCategory = v!),
+      body: CustomScrollView(
+        slivers: [
+          // 그라데이션 헤더
+          SliverToBoxAdapter(
+            child: Container(
+              padding: const EdgeInsets.fromLTRB(20, 60, 20, 24),
+              decoration: const BoxDecoration(
+                gradient: LinearGradient(
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                  colors: [Color(0xFFFF6B35), Color(0xFFFF8E53)],
                 ),
-                const SizedBox(width: 12),
-                // 재료명 입력
-                Expanded(
-                  child: TextField(
-                    controller: _controller,
-                    decoration: const InputDecoration(
-                      hintText: '재료명 입력',
-                      border: OutlineInputBorder(),
-                      contentPadding:
-                          EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                borderRadius: BorderRadius.only(
+                  bottomLeft: Radius.circular(28),
+                  bottomRight: Radius.circular(28),
+                ),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text('🥕 내 냉장고',
+                      style: TextStyle(
+                          fontSize: 28,
+                          fontWeight: FontWeight.w800,
+                          color: Colors.white)),
+                  const SizedBox(height: 4),
+                  Text('${_ingredients.length}개 재료 보관 중',
+                      style: TextStyle(
+                          fontSize: 15,
+                          color: Colors.white.withValues(alpha: 0.85))),
+                  const SizedBox(height: 20),
+                  // 입력 영역
+                  Container(
+                    padding: const EdgeInsets.all(4),
+                    decoration: BoxDecoration(
+                      color: Colors.white,
+                      borderRadius: BorderRadius.circular(16),
                     ),
-                    onSubmitted: (_) => _addIngredient(),
-                  ),
-                ),
-                const SizedBox(width: 8),
-                // 추가 버튼
-                FilledButton(
-                  onPressed: _addIngredient,
-                  child: const Text('추가'),
-                ),
-              ],
-            ),
-          ),
-
-          // 재료 개수 표시
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 16),
-            child: Row(
-              children: [
-                Text(
-                  '총 ${_ingredients.length}개 재료',
-                  style: Theme.of(context).textTheme.bodySmall,
-                ),
-              ],
-            ),
-          ),
-          const SizedBox(height: 8),
-
-          // 재료 목록
-          Expanded(
-            child: _ingredients.isEmpty
-                ? const Center(
-                    child: Text(
-                      '재료를 추가해주세요!\n냉장고에 있는 것들을 등록하면\nAI가 요리를 추천해줘요 🍳',
-                      textAlign: TextAlign.center,
-                      style: TextStyle(color: Colors.grey, fontSize: 16),
-                    ),
-                  )
-                : ListView(
-                    padding: const EdgeInsets.symmetric(horizontal: 16),
-                    children: grouped.entries.map((entry) {
-                      return Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          // 카테고리 헤더
-                          Padding(
-                            padding: const EdgeInsets.only(top: 12, bottom: 4),
-                            child: Text(
-                              _categoryEmoji(entry.key),
-                              style: Theme.of(context)
-                                  .textTheme
-                                  .titleSmall
-                                  ?.copyWith(fontWeight: FontWeight.bold),
+                    child: Row(
+                      children: [
+                        const SizedBox(width: 8),
+                        _buildCategoryDropdown(),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: TextField(
+                            controller: _controller,
+                            decoration: const InputDecoration(
+                              hintText: '재료명 입력',
+                              border: InputBorder.none,
+                              contentPadding: EdgeInsets.symmetric(horizontal: 8),
+                            ),
+                            onSubmitted: (_) => _addIngredient(),
+                          ),
+                        ),
+                        Container(
+                          decoration: BoxDecoration(
+                            gradient: const LinearGradient(
+                              colors: [Color(0xFFFF6B35), Color(0xFFFF8E53)],
+                            ),
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                          child: Material(
+                            color: Colors.transparent,
+                            child: InkWell(
+                              borderRadius: BorderRadius.circular(12),
+                              onTap: _addIngredient,
+                              child: const Padding(
+                                padding: EdgeInsets.symmetric(
+                                    horizontal: 16, vertical: 10),
+                                child: Icon(Icons.add, color: Colors.white),
+                              ),
                             ),
                           ),
-                          // 재료 칩 목록
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+
+          // 재료 목록
+          if (_ingredients.isEmpty)
+            const SliverFillRemaining(
+              child: Center(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text('🧊', style: TextStyle(fontSize: 64)),
+                    SizedBox(height: 16),
+                    Text('냉장고가 비어있어요',
+                        style: TextStyle(
+                            fontSize: 18,
+                            fontWeight: FontWeight.w600,
+                            color: Color(0xFF636E72))),
+                    SizedBox(height: 8),
+                    Text('재료를 추가하면 AI가 요리를 추천해줘요!',
+                        style:
+                            TextStyle(fontSize: 14, color: Color(0xFFB2BEC3))),
+                  ],
+                ),
+              ),
+            )
+          else
+            SliverPadding(
+              padding: const EdgeInsets.all(16),
+              sliver: SliverList(
+                delegate: SliverChildListDelegate(
+                  grouped.entries.map((entry) {
+                    return Padding(
+                      padding: const EdgeInsets.only(bottom: 16),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(_categoryEmoji(entry.key),
+                              style: const TextStyle(
+                                  fontSize: 15,
+                                  fontWeight: FontWeight.w700,
+                                  color: Color(0xFF636E72))),
+                          const SizedBox(height: 8),
                           Wrap(
                             spacing: 8,
-                            runSpacing: 4,
+                            runSpacing: 8,
                             children: entry.value.map((item) {
                               final index = _ingredients.indexOf(item);
-                              return Chip(
-                                label: Text(item['name']!),
-                                onDeleted: () => _removeIngredient(index),
-                                deleteIconColor: Colors.red.shade300,
+                              return Container(
+                                decoration: BoxDecoration(
+                                  color: Colors.white,
+                                  borderRadius: BorderRadius.circular(24),
+                                  boxShadow: [
+                                    BoxShadow(
+                                      color:
+                                          Colors.black.withValues(alpha: 0.04),
+                                      blurRadius: 8,
+                                      offset: const Offset(0, 2),
+                                    ),
+                                  ],
+                                ),
+                                child: Chip(
+                                  label: Text(item['name']!,
+                                      style: const TextStyle(fontSize: 14)),
+                                  onDeleted: () => _removeIngredient(index),
+                                  deleteIconColor: const Color(0xFFFF6B35),
+                                  backgroundColor: Colors.white,
+                                  side: BorderSide.none,
+                                  elevation: 0,
+                                ),
                               );
                             }).toList(),
                           ),
                         ],
-                      );
-                    }).toList(),
-                  ),
-          ),
+                      ),
+                    );
+                  }).toList(),
+                ),
+              ),
+            ),
         ],
+      ),
+    );
+  }
+
+  Widget _buildCategoryDropdown() {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8),
+      decoration: BoxDecoration(
+        color: const Color(0xFFF1F2F6),
+        borderRadius: BorderRadius.circular(10),
+      ),
+      child: DropdownButtonHideUnderline(
+        child: DropdownButton<String>(
+          value: _selectedCategory,
+          isDense: true,
+          style: const TextStyle(fontSize: 13, color: Color(0xFF2D3436)),
+          items: _categories
+              .map((c) => DropdownMenuItem(value: c, child: Text(c)))
+              .toList(),
+          onChanged: (v) => setState(() => _selectedCategory = v!),
+        ),
       ),
     );
   }
