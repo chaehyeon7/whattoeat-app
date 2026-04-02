@@ -8,25 +8,33 @@ class GeminiService {
       'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent';
 
   static Future<Map<String, dynamic>> _call(String prompt) async {
-    final response = await http.post(
-      Uri.parse('$_baseUrl?key=$_apiKey'),
-      headers: {'Content-Type': 'application/json'},
-      body: jsonEncode({
-        'contents': [
-          {'parts': [{'text': prompt}]}
-        ],
-        'generationConfig': {'temperature': 0.8, 'maxOutputTokens': 1024},
-      }),
-    );
+    for (int retry = 0; retry < 3; retry++) {
+      final response = await http.post(
+        Uri.parse('$_baseUrl?key=$_apiKey'),
+        headers: {'Content-Type': 'application/json'},
+        body: jsonEncode({
+          'contents': [
+            {'parts': [{'text': prompt}]}
+          ],
+          'generationConfig': {'temperature': 0.8, 'maxOutputTokens': 1024},
+        }),
+      );
 
-    if (response.statusCode != 200) {
-      throw Exception('Gemini API 오류: ${response.statusCode}');
+      if (response.statusCode == 429) {
+        await Future.delayed(Duration(seconds: 3 * (retry + 1)));
+        continue;
+      }
+
+      if (response.statusCode != 200) {
+        throw Exception('Gemini API 오류: ${response.statusCode}');
+      }
+
+      final data = jsonDecode(response.body);
+      final text = data['candidates'][0]['content']['parts'][0]['text'] as String;
+      final jsonStr = text.substring(text.indexOf('{'), text.lastIndexOf('}') + 1);
+      return jsonDecode(jsonStr) as Map<String, dynamic>;
     }
-
-    final data = jsonDecode(response.body);
-    final text = data['candidates'][0]['content']['parts'][0]['text'] as String;
-    final jsonStr = text.substring(text.indexOf('{'), text.lastIndexOf('}') + 1);
-    return jsonDecode(jsonStr) as Map<String, dynamic>;
+    throw Exception('AI 서버가 바빠요. 잠시 후 다시 시도해주세요');
   }
 
   /// 해먹기 추천
