@@ -16,12 +16,12 @@ class GeminiService {
           'contents': [
             {'parts': [{'text': prompt}]}
           ],
-          'generationConfig': {'temperature': 0.8, 'maxOutputTokens': 1024},
+          'generationConfig': {'temperature': 0.8, 'maxOutputTokens': 1500},
         }),
       );
 
       if (response.statusCode == 429) {
-        await Future.delayed(Duration(seconds: 3 * (retry + 1)));
+        await Future.delayed(Duration(seconds: 5 * (retry + 1)));
         continue;
       }
 
@@ -37,7 +37,7 @@ class GeminiService {
     throw Exception('AI 서버가 바빠요. 잠시 후 다시 시도해주세요');
   }
 
-  /// 해먹기 추천
+  /// 냉장고 탭 전용: 해먹기만 추천
   static Future<Map<String, dynamic>> recommendCook({
     required List<String> ingredients,
     required String weight,
@@ -75,17 +75,22 @@ $ingredientText
 }''');
   }
 
-  /// 사먹기 추천 (주변 음식점 기반)
-  static Future<Map<String, dynamic>> recommendEatOut({
+  /// 탭2 통합 추천: 사먹기 + 해먹기를 1회 호출로 처리
+  static Future<Map<String, dynamic>> recommendAll({
     required String weight,
     required String cuisine,
     String? price,
     required List<Map<String, dynamic>> restaurants,
+    required List<String> ingredients,
   }) async {
     final restaurantText = restaurants.asMap().entries.map((e) {
       final r = e.value;
       return '${e.key + 1}. ${r['name']} (${r['distance']}m) - ${r['category']}';
     }).join('\n');
+
+    final ingredientText = ingredients.isEmpty
+        ? '없음'
+        : ingredients.join(', ');
 
     return _call('''
 당신은 점심 메뉴 추천 전문가입니다. 친근하게 추천해주세요.
@@ -98,7 +103,13 @@ ${price != null ? '- 가격대: $price' : ''}
 [내 주변 음식점]
 $restaurantText
 
-위 음식점 중 조건에 가장 맞는 곳 2~3개를 골라 추천해주세요.
+[냉장고 재료]
+$ingredientText
+
+아래 두 가지를 추천해주세요:
+1. 위 음식점 중 조건에 맞는 곳 최대 2개
+2. 냉장고 재료로 만들 수 있는 요리 2개 (재료가 "없음"이면 recipes는 빈 배열)
+
 반드시 아래 JSON 형식으로만 응답하세요. 다른 텍스트 없이 JSON만 출력하세요.
 
 {
@@ -107,6 +118,14 @@ $restaurantText
     {
       "name": "음식점명 (위 목록에 있는 이름 그대로)",
       "reason": "추천 이유 한 줄"
+    }
+  ],
+  "recipes": [
+    {
+      "name": "요리명",
+      "reason": "추천 이유 한 줄",
+      "ingredients": ["재료1", "재료2"],
+      "recipe": "간단 레시피 3줄 이내"
     }
   ]
 }''');

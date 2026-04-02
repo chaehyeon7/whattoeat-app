@@ -83,30 +83,18 @@ class _RecommendScreenState extends State<RecommendScreen> {
       );
       _restaurants = restaurants;
 
-      // Gemini 사먹기 + 해먹기 동시 호출
-      final futures = <Future<Map<String, dynamic>>>[];
-
-      if (restaurants.isNotEmpty) {
-        futures.add(GeminiService.recommendEatOut(
-          weight: _weight!, cuisine: _cuisine!, price: _price,
-          restaurants: restaurants,
-        ));
-      }
-
-      if (ingredients.isNotEmpty) {
-        futures.add(GeminiService.recommendCook(
-          ingredients: ingredients, weight: _weight!, cuisine: _cuisine!, price: _price,
-        ));
-      }
-
-      final geminiResults = await Future.wait(futures);
+      // Gemini 1회 호출로 사먹기 + 해먹기 통합 추천
+      final result = await GeminiService.recommendAll(
+        weight: _weight!,
+        cuisine: _cuisine!,
+        price: _price,
+        restaurants: restaurants,
+        ingredients: ingredients,
+      );
 
       setState(() {
-        int idx = 0;
-        if (restaurants.isNotEmpty) _eatOutResult = geminiResults[idx++];
-        if (ingredients.isNotEmpty && idx < geminiResults.length) {
-          _cookResult = geminiResults[idx];
-        }
+        _eatOutResult = result;
+        _cookResult = result;
         _hasResult = true;
       });
     } catch (e) {
