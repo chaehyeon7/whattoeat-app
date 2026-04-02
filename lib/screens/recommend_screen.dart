@@ -18,8 +18,9 @@ class _RecommendScreenState extends State<RecommendScreen> {
   String? _cuisine;
   String? _price;
   bool _isLoading = false;
-  Map<String, dynamic>? _cookResult;
+  bool _hasResult = false;
   Map<String, dynamic>? _eatOutResult;
+  Map<String, dynamic>? _cookResult;
   List<Map<String, dynamic>> _restaurants = [];
 
   static const _weights = ['가벼운', '보통', '든든한'];
@@ -64,8 +65,9 @@ class _RecommendScreenState extends State<RecommendScreen> {
 
     setState(() {
       _isLoading = true;
-      _cookResult = null;
+      _hasResult = false;
       _eatOutResult = null;
+      _cookResult = null;
       _restaurants = [];
     });
 
@@ -74,25 +76,38 @@ class _RecommendScreenState extends State<RecommendScreen> {
       final position = results[0] as Position;
       final ingredients = results[1] as List<String>;
 
+      // 카카오 음식점 검색
       final keyword = _cuisineKeywords[_cuisine] ?? _cuisine!;
       final restaurants = await KakaoService.searchRestaurants(
         lat: position.latitude, lng: position.longitude, keyword: keyword,
       );
       _restaurants = restaurants;
 
-      final geminiResults = await Future.wait([
-        GeminiService.recommendCook(
+      // Gemini 사먹기 + 해먹기 동시 호출
+      final futures = <Future<Map<String, dynamic>>>[];
+
+      if (restaurants.isNotEmpty) {
+        futures.add(GeminiService.recommendEatOut(
+          weight: _weight!, cuisine: _cuisine!, price: _price,
+          restaurants: restaurants,
+        ));
+      }
+
+      if (ingredients.isNotEmpty) {
+        futures.add(GeminiService.recommendCook(
           ingredients: ingredients, weight: _weight!, cuisine: _cuisine!, price: _price,
-        ),
-        if (restaurants.isNotEmpty)
-          GeminiService.recommendEatOut(
-            weight: _weight!, cuisine: _cuisine!, price: _price, restaurants: restaurants,
-          ),
-      ]);
+        ));
+      }
+
+      final geminiResults = await Future.wait(futures);
 
       setState(() {
-        _cookResult = geminiResults[0];
-        if (geminiResults.length > 1) _eatOutResult = geminiResults[1];
+        int idx = 0;
+        if (restaurants.isNotEmpty) _eatOutResult = geminiResults[idx++];
+        if (ingredients.isNotEmpty && idx < geminiResults.length) {
+          _cookResult = geminiResults[idx];
+        }
+        _hasResult = true;
       });
     } catch (e) {
       if (mounted) {
@@ -110,14 +125,13 @@ class _RecommendScreenState extends State<RecommendScreen> {
     return Scaffold(
       body: CustomScrollView(
         slivers: [
-          // 그라데이션 헤더
+          // 헤더
           SliverToBoxAdapter(
             child: Container(
               padding: const EdgeInsets.fromLTRB(20, 60, 20, 24),
               decoration: const BoxDecoration(
                 gradient: LinearGradient(
-                  begin: Alignment.topLeft,
-                  end: Alignment.bottomRight,
+                  begin: Alignment.topLeft, end: Alignment.bottomRight,
                   colors: [Color(0xFFFF6B35), Color(0xFFFF8E53)],
                 ),
                 borderRadius: BorderRadius.only(
@@ -129,86 +143,48 @@ class _RecommendScreenState extends State<RecommendScreen> {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   const Text('🎰 오늘 뭐먹지',
-                      style: TextStyle(
-                          fontSize: 28,
-                          fontWeight: FontWeight.w800,
-                          color: Colors.white)),
+                      style: TextStyle(fontSize: 28, fontWeight: FontWeight.w800, color: Colors.white)),
                   const SizedBox(height: 4),
                   Text('AI가 딱 맞는 메뉴를 골라줄게요',
-                      style: TextStyle(
-                          fontSize: 15,
-                          color: Colors.white.withValues(alpha: 0.85))),
+                      style: TextStyle(fontSize: 15, color: Colors.white.withValues(alpha: 0.85))),
                 ],
               ),
             ),
           ),
 
-          // 필터 + 결과
           SliverPadding(
             padding: const EdgeInsets.all(16),
             sliver: SliverList(
               delegate: SliverChildListDelegate([
-                _buildFilterCard('무게감', _weights, _weight,
-                    (v) => setState(() => _weight = v)),
+                // 필터
+                _buildFilterCard('무게감', _weights, _weight, (v) => setState(() => _weight = v)),
                 const SizedBox(height: 12),
-                _buildFilterCard('종류', _cuisines, _cuisine,
-                    (v) => setState(() => _cuisine = v)),
+                _buildFilterCard('종류', _cuisines, _cuisine, (v) => setState(() => _cuisine = v)),
                 const SizedBox(height: 12),
-                _buildFilterCard('가격대', _prices, _price,
-                    (v) => setState(() => _price = v)),
+                _buildFilterCard('가격대', _prices, _price, (v) => setState(() => _price = v)),
                 const SizedBox(height: 20),
 
                 // 추천 버튼
-                Container(
-                  height: 56,
-                  decoration: BoxDecoration(
-                    gradient: _isLoading
-                        ? null
-                        : const LinearGradient(
-                            colors: [Color(0xFFFF6B35), Color(0xFFFF8E53)]),
-                    borderRadius: BorderRadius.circular(16),
-                    color: _isLoading ? Colors.grey.shade300 : null,
-                  ),
-                  child: Material(
-                    color: Colors.transparent,
-                    child: InkWell(
-                      borderRadius: BorderRadius.circular(16),
-                      onTap: _isLoading ? null : _recommend,
-                      child: Center(
-                        child: _isLoading
-                            ? const Row(
-                                mainAxisSize: MainAxisSize.min,
-                                children: [
-                                  SizedBox(
-                                      width: 20, height: 20,
-                                      child: CircularProgressIndicator(
-                                          strokeWidth: 2, color: Colors.white)),
-                                  SizedBox(width: 12),
-                                  Text('AI가 고르는 중...',
-                                      style: TextStyle(
-                                          fontSize: 17,
-                                          fontWeight: FontWeight.w700,
-                                          color: Colors.white)),
-                                ],
-                              )
-                            : const Text('🤖 AI 추천받기',
-                                style: TextStyle(
-                                    fontSize: 18,
-                                    fontWeight: FontWeight.w700,
-                                    color: Colors.white)),
-                      ),
-                    ),
-                  ),
-                ),
+                _buildRecommendButton(),
                 const SizedBox(height: 24),
 
-                // 사먹기 결과
-                if (_eatOutResult != null) _buildEatOutSection(),
+                // 결과
+                if (_hasResult) ...[
+                  // 사먹기
+                  if (_eatOutResult != null) _buildEatOutSection(),
 
-                // 해먹기 결과
-                if (_cookResult != null) ...[
-                  const SizedBox(height: 20),
-                  _buildCookSection(),
+                  // 다시 고르기 버튼
+                  const SizedBox(height: 16),
+                  _buildRetryButton(),
+
+                  // 해먹기
+                  if (_cookResult != null) ...[
+                    const SizedBox(height: 24),
+                    _buildCookSection(),
+                  ] else if (_hasResult) ...[
+                    const SizedBox(height: 24),
+                    _buildNoIngredientHint(),
+                  ],
                 ],
               ]),
             ),
@@ -218,61 +194,65 @@ class _RecommendScreenState extends State<RecommendScreen> {
     );
   }
 
-  Widget _buildFilterCard(String title, List<String> options, String? selected,
-      ValueChanged<String> onSelected) {
+  Widget _buildRecommendButton() {
+    return Container(
+      height: 56,
+      decoration: BoxDecoration(
+        gradient: _isLoading ? null : const LinearGradient(colors: [Color(0xFFFF6B35), Color(0xFFFF8E53)]),
+        color: _isLoading ? Colors.grey.shade300 : null,
+        borderRadius: BorderRadius.circular(16),
+      ),
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          borderRadius: BorderRadius.circular(16),
+          onTap: _isLoading ? null : _recommend,
+          child: Center(
+            child: _isLoading
+                ? const Row(mainAxisSize: MainAxisSize.min, children: [
+                    SizedBox(width: 20, height: 20,
+                        child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white)),
+                    SizedBox(width: 12),
+                    Text('AI가 고르는 중...', style: TextStyle(fontSize: 17, fontWeight: FontWeight.w700, color: Colors.white)),
+                  ])
+                : const Text('🤖 AI 추천받기', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700, color: Colors.white)),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildRetryButton() {
+    return GestureDetector(
+      onTap: _recommend,
+      child: Container(
+        height: 48,
+        decoration: BoxDecoration(
+          border: Border.all(color: const Color(0xFFFF6B35), width: 1.5),
+          borderRadius: BorderRadius.circular(14),
+        ),
+        child: const Center(
+          child: Text('🔄 다시 추천받기',
+              style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600, color: Color(0xFFFF6B35))),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildNoIngredientHint() {
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(16),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withValues(alpha: 0.04),
-            blurRadius: 10,
-            offset: const Offset(0, 2),
-          ),
-        ],
+        color: const Color(0xFFF1F2F6),
+        borderRadius: BorderRadius.circular(14),
       ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
+      child: const Row(
         children: [
-          Text(title,
-              style: const TextStyle(
-                  fontSize: 15,
-                  fontWeight: FontWeight.w700,
-                  color: Color(0xFF636E72))),
-          const SizedBox(height: 10),
-          Wrap(
-            spacing: 8,
-            runSpacing: 8,
-            children: options.map((option) {
-              final isSelected = selected == option;
-              return GestureDetector(
-                onTap: () => onSelected(option),
-                child: AnimatedContainer(
-                  duration: const Duration(milliseconds: 200),
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-                  decoration: BoxDecoration(
-                    gradient: isSelected
-                        ? const LinearGradient(
-                            colors: [Color(0xFFFF6B35), Color(0xFFFF8E53)])
-                        : null,
-                    color: isSelected ? null : const Color(0xFFF1F2F6),
-                    borderRadius: BorderRadius.circular(20),
-                  ),
-                  child: Text(option,
-                      style: TextStyle(
-                        fontSize: 14,
-                        fontWeight:
-                            isSelected ? FontWeight.w600 : FontWeight.w400,
-                        color: isSelected
-                            ? Colors.white
-                            : const Color(0xFF636E72),
-                      )),
-                ),
-              );
-            }).toList(),
+          Text('💡', style: TextStyle(fontSize: 20)),
+          SizedBox(width: 10),
+          Expanded(
+            child: Text('냉장고 탭에서 재료를 등록하면\n여기에 해먹기 추천도 같이 나와요!',
+                style: TextStyle(fontSize: 14, color: Color(0xFF636E72), height: 1.4)),
           ),
         ],
       ),
@@ -280,7 +260,7 @@ class _RecommendScreenState extends State<RecommendScreen> {
   }
 
   Widget _buildEatOutSection() {
-    final picks = _eatOutResult!['picks'] as List<dynamic>? ?? [];
+    final picks = (_eatOutResult!['picks'] as List<dynamic>? ?? []).take(2).toList();
     final comment = _eatOutResult!['comment'] as String? ?? '';
 
     return Column(
@@ -291,31 +271,24 @@ class _RecommendScreenState extends State<RecommendScreen> {
             width: double.infinity,
             padding: const EdgeInsets.all(14),
             decoration: BoxDecoration(
-              gradient: LinearGradient(
-                colors: [
-                  const Color(0xFFFF6B35).withValues(alpha: 0.08),
-                  const Color(0xFFFF8E53).withValues(alpha: 0.05),
-                ],
-              ),
+              gradient: LinearGradient(colors: [
+                const Color(0xFFFF6B35).withValues(alpha: 0.08),
+                const Color(0xFFFF8E53).withValues(alpha: 0.05),
+              ]),
               borderRadius: BorderRadius.circular(14),
             ),
-            child: Text('🤖 $comment',
-                style: const TextStyle(fontSize: 15, height: 1.4)),
+            child: Text('🤖 $comment', style: const TextStyle(fontSize: 15, height: 1.4)),
           ),
         const SizedBox(height: 16),
-        const Text('🏪 사먹기',
-            style: TextStyle(fontSize: 20, fontWeight: FontWeight.w800)),
+        const Text('🏪 내 주변 추천', style: TextStyle(fontSize: 20, fontWeight: FontWeight.w800)),
         const SizedBox(height: 10),
         ...picks.map((p) {
           final pick = p as Map<String, dynamic>;
           final pickName = pick['name'] as String? ?? '';
-          final restaurant =
-              _restaurants.cast<Map<String, dynamic>?>().firstWhere(
-                    (r) =>
-                        r!['name'].toString().contains(pickName) ||
-                        pickName.contains(r['name'].toString()),
-                    orElse: () => null,
-                  );
+          final restaurant = _restaurants.cast<Map<String, dynamic>?>().firstWhere(
+            (r) => r!['name'].toString().contains(pickName) || pickName.contains(r['name'].toString()),
+            orElse: () => null,
+          );
 
           return Container(
             margin: const EdgeInsets.only(bottom: 12),
@@ -323,50 +296,29 @@ class _RecommendScreenState extends State<RecommendScreen> {
             decoration: BoxDecoration(
               color: Colors.white,
               borderRadius: BorderRadius.circular(16),
-              boxShadow: [
-                BoxShadow(
-                  color: Colors.black.withValues(alpha: 0.04),
-                  blurRadius: 10,
-                  offset: const Offset(0, 2),
-                ),
-              ],
+              boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.04), blurRadius: 10, offset: const Offset(0, 2))],
             ),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(pickName,
-                    style: const TextStyle(
-                        fontSize: 17, fontWeight: FontWeight.w700)),
+                Text(pickName, style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w700)),
                 const SizedBox(height: 6),
-                Text(pick['reason'] ?? '',
-                    style: const TextStyle(
-                        fontSize: 14, color: Color(0xFF636E72), height: 1.4)),
+                Text(pick['reason'] ?? '', style: const TextStyle(fontSize: 14, color: Color(0xFF636E72), height: 1.4)),
                 if (restaurant != null) ...[
                   const SizedBox(height: 10),
-                  Row(
-                    children: [
-                      const Icon(Icons.location_on,
-                          size: 14, color: Color(0xFFFF6B35)),
-                      const SizedBox(width: 4),
-                      Expanded(
-                        child: Text(
-                            '${restaurant['address']} · ${restaurant['distance']}m',
-                            style: const TextStyle(
-                                fontSize: 13, color: Color(0xFF636E72))),
-                      ),
-                    ],
-                  ),
+                  Row(children: [
+                    const Icon(Icons.location_on, size: 14, color: Color(0xFFFF6B35)),
+                    const SizedBox(width: 4),
+                    Expanded(child: Text('${restaurant['address']} · ${restaurant['distance']}m',
+                        style: const TextStyle(fontSize: 13, color: Color(0xFF636E72)))),
+                  ]),
                   const SizedBox(height: 10),
-                  Row(
-                    children: [
-                      if ((restaurant['phone'] as String).isNotEmpty)
-                        _buildActionButton(Icons.phone, '전화',
-                            () => launchUrl(Uri.parse('tel:${restaurant['phone']}'))),
-                      const SizedBox(width: 8),
-                      _buildActionButton(Icons.map, '지도보기',
-                          () => launchUrl(Uri.parse(restaurant['url']))),
-                    ],
-                  ),
+                  Row(children: [
+                    if ((restaurant['phone'] as String).isNotEmpty)
+                      _buildActionButton(Icons.phone, '전화', () => launchUrl(Uri.parse('tel:${restaurant['phone']}'))),
+                    const SizedBox(width: 8),
+                    _buildActionButton(Icons.map, '지도보기', () => launchUrl(Uri.parse(restaurant['url']))),
+                  ]),
                 ],
               ],
             ),
@@ -385,18 +337,11 @@ class _RecommendScreenState extends State<RecommendScreen> {
           color: const Color(0xFFFF6B35).withValues(alpha: 0.1),
           borderRadius: BorderRadius.circular(10),
         ),
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(icon, size: 15, color: const Color(0xFFFF6B35)),
-            const SizedBox(width: 4),
-            Text(label,
-                style: const TextStyle(
-                    fontSize: 13,
-                    fontWeight: FontWeight.w600,
-                    color: Color(0xFFFF6B35))),
-          ],
-        ),
+        child: Row(mainAxisSize: MainAxisSize.min, children: [
+          Icon(icon, size: 15, color: const Color(0xFFFF6B35)),
+          const SizedBox(width: 4),
+          Text(label, style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: Color(0xFFFF6B35))),
+        ]),
       ),
     );
   }
@@ -407,71 +352,104 @@ class _RecommendScreenState extends State<RecommendScreen> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        const Text('🍳 해먹기',
-            style: TextStyle(fontSize: 20, fontWeight: FontWeight.w800)),
-        const SizedBox(height: 10),
-        ...recipes.map((r) => _buildRecipeCard(r as Map<String, dynamic>)),
+        Container(
+          padding: const EdgeInsets.all(16),
+          decoration: BoxDecoration(
+            gradient: LinearGradient(colors: [
+              const Color(0xFF6C5CE7).withValues(alpha: 0.08),
+              const Color(0xFFA29BFE).withValues(alpha: 0.05),
+            ]),
+            borderRadius: BorderRadius.circular(14),
+          ),
+          child: const Row(children: [
+            Text('🍳', style: TextStyle(fontSize: 20)),
+            SizedBox(width: 10),
+            Expanded(child: Text('집에서 해먹기\n냉장고 재료로 만들 수 있는 메뉴예요',
+                style: TextStyle(fontSize: 14, color: Color(0xFF636E72), height: 1.4))),
+          ]),
+        ),
+        const SizedBox(height: 12),
+        ...recipes.map((r) {
+          final recipe = r as Map<String, dynamic>;
+          return Container(
+            margin: const EdgeInsets.only(bottom: 12),
+            padding: const EdgeInsets.all(16),
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(16),
+              boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.04), blurRadius: 10, offset: const Offset(0, 2))],
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(recipe['name'] ?? '', style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w700)),
+                const SizedBox(height: 6),
+                Text(recipe['reason'] ?? '', style: const TextStyle(fontSize: 14, color: Color(0xFF636E72))),
+                if (recipe['ingredients'] != null) ...[
+                  const SizedBox(height: 10),
+                  Wrap(spacing: 6, runSpacing: 6,
+                    children: (recipe['ingredients'] as List<dynamic>).map((i) {
+                      return Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                        decoration: BoxDecoration(color: const Color(0xFFF1F2F6), borderRadius: BorderRadius.circular(12)),
+                        child: Text(i.toString(), style: const TextStyle(fontSize: 12, color: Color(0xFF636E72))),
+                      );
+                    }).toList(),
+                  ),
+                ],
+                if (recipe['recipe'] != null) ...[
+                  const SizedBox(height: 12),
+                  Container(
+                    width: double.infinity,
+                    padding: const EdgeInsets.all(12),
+                    decoration: BoxDecoration(color: const Color(0xFFFFF3E0), borderRadius: BorderRadius.circular(12)),
+                    child: Text('👨‍🍳 ${recipe['recipe']}',
+                        style: const TextStyle(fontSize: 13, height: 1.6, color: Color(0xFF5D4037))),
+                  ),
+                ],
+              ],
+            ),
+          );
+        }),
       ],
     );
   }
 
-  Widget _buildRecipeCard(Map<String, dynamic> recipe) {
+  Widget _buildFilterCard(String title, List<String> options, String? selected, ValueChanged<String> onSelected) {
     return Container(
-      margin: const EdgeInsets.only(bottom: 12),
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
         color: Colors.white,
         borderRadius: BorderRadius.circular(16),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withValues(alpha: 0.04),
-            blurRadius: 10,
-            offset: const Offset(0, 2),
-          ),
-        ],
+        boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.04), blurRadius: 10, offset: const Offset(0, 2))],
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(recipe['name'] ?? '',
-              style:
-                  const TextStyle(fontSize: 17, fontWeight: FontWeight.w700)),
-          const SizedBox(height: 6),
-          Text(recipe['reason'] ?? '',
-              style: const TextStyle(
-                  fontSize: 14, color: Color(0xFF636E72), height: 1.4)),
+          Text(title, style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w700, color: Color(0xFF636E72))),
           const SizedBox(height: 10),
-          if (recipe['ingredients'] != null)
-            Wrap(
-              spacing: 6,
-              runSpacing: 6,
-              children: (recipe['ingredients'] as List<dynamic>).map((i) {
-                return Container(
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+          Wrap(spacing: 8, runSpacing: 8,
+            children: options.map((option) {
+              final isSelected = selected == option;
+              return GestureDetector(
+                onTap: () => onSelected(option),
+                child: AnimatedContainer(
+                  duration: const Duration(milliseconds: 200),
+                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
                   decoration: BoxDecoration(
-                    color: const Color(0xFFF1F2F6),
-                    borderRadius: BorderRadius.circular(12),
+                    gradient: isSelected ? const LinearGradient(colors: [Color(0xFFFF6B35), Color(0xFFFF8E53)]) : null,
+                    color: isSelected ? null : const Color(0xFFF1F2F6),
+                    borderRadius: BorderRadius.circular(20),
                   ),
-                  child: Text(i.toString(),
-                      style: const TextStyle(fontSize: 12, color: Color(0xFF636E72))),
-                );
-              }).toList(),
-            ),
-          if (recipe['recipe'] != null) ...[
-            const SizedBox(height: 12),
-            Container(
-              width: double.infinity,
-              padding: const EdgeInsets.all(12),
-              decoration: BoxDecoration(
-                color: const Color(0xFFFFF3E0),
-                borderRadius: BorderRadius.circular(12),
-              ),
-              child: Text('👨‍🍳 ${recipe['recipe']}',
-                  style: const TextStyle(
-                      fontSize: 13, height: 1.6, color: Color(0xFF5D4037))),
-            ),
-          ],
+                  child: Text(option, style: TextStyle(
+                    fontSize: 14,
+                    fontWeight: isSelected ? FontWeight.w600 : FontWeight.w400,
+                    color: isSelected ? Colors.white : const Color(0xFF636E72),
+                  )),
+                ),
+              );
+            }).toList(),
+          ),
         ],
       ),
     );
