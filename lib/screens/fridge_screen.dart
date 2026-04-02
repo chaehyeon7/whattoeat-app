@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'dart:convert';
 import '../services/gemini_service.dart';
+import '../services/cook_cache_service.dart';
 
 class FridgeScreen extends StatefulWidget {
   const FridgeScreen({super.key});
@@ -82,6 +83,7 @@ class _FridgeScreenState extends State<FridgeScreen> {
         cuisine: '상관없음',
         price: null,
       );
+      await CookCacheService.save(result, names);
       setState(() => _cookResult = result);
     } catch (e) {
       if (mounted) {

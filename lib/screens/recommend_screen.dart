@@ -1,10 +1,9 @@
 import 'package:flutter/material.dart';
-import 'package:shared_preferences/shared_preferences.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:url_launcher/url_launcher.dart';
-import 'dart:convert';
 import '../services/gemini_service.dart';
 import '../services/kakao_service.dart';
+import '../services/cook_cache_service.dart';
 
 class RecommendScreen extends StatefulWidget {
   const RecommendScreen({super.key});
@@ -31,13 +30,6 @@ class _RecommendScreenState extends State<RecommendScreen> {
     '한식': '한식', '일식': '일식', '중식': '중국집',
     '양식': '양식', '분식': '분식', '동남아': '태국 베트남 음식',
   };
-
-  Future<List<String>> _getIngredients() async {
-    final prefs = await SharedPreferences.getInstance();
-    final data = prefs.getString('ingredients');
-    if (data == null) return [];
-    return (jsonDecode(data) as List).map((e) => e['name'] as String).toList();
-  }
 
   Future<Position> _getLocation() async {
     final permission = await Geolocator.checkPermission();
@@ -72,9 +64,7 @@ class _RecommendScreenState extends State<RecommendScreen> {
     });
 
     try {
-      final results = await Future.wait([_getLocation(), _getIngredients()]);
-      final position = results[0] as Position;
-      final ingredients = results[1] as List<String>;
+      final position = await _getLocation();
 
       // 카카오 음식점 검색
       final keyword = _cuisineKeywords[_cuisine] ?? _cuisine!;
@@ -83,18 +73,19 @@ class _RecommendScreenState extends State<RecommendScreen> {
       );
       _restaurants = restaurants;
 
-      // Gemini 1회 호출로 사먹기 + 해먹기 통합 추천
-      final result = await GeminiService.recommendAll(
+      // Gemini 사먹기만 호출 + 캐시된 해먹기 가져오기
+      final geminiResult = await GeminiService.recommendEatOut(
         weight: _weight!,
         cuisine: _cuisine!,
         price: _price,
         restaurants: restaurants,
-        ingredients: ingredients,
       );
 
+      final cachedCook = await CookCacheService.get();
+
       setState(() {
-        _eatOutResult = result;
-        _cookResult = result;
+        _eatOutResult = geminiResult;
+        _cookResult = cachedCook;
         _hasResult = true;
       });
     } catch (e) {
