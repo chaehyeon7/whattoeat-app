@@ -1,14 +1,16 @@
 import 'dart:convert';
+import 'package:flutter/foundation.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:http/http.dart' as http;
 
 class GeminiService {
   static final _apiKey = dotenv.env['GEMINI_API_KEY'] ?? '';
   static const _baseUrl =
-      'https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent';
+      'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent';
 
   static Future<Map<String, dynamic>> _call(String prompt) async {
     for (int retry = 0; retry < 3; retry++) {
+      debugPrint('[Gemini] 호출 시도 ${retry + 1}/3');
       final response = await http.post(
         Uri.parse('$_baseUrl?key=$_apiKey'),
         headers: {'Content-Type': 'application/json'},
@@ -20,17 +22,22 @@ class GeminiService {
         }),
       );
 
+      debugPrint('[Gemini] 응답 코드: ${response.statusCode}');
+
       if (response.statusCode == 429) {
+        debugPrint('[Gemini] 429 한도 초과, ${5 * (retry + 1)}초 대기');
         await Future.delayed(Duration(seconds: 5 * (retry + 1)));
         continue;
       }
 
       if (response.statusCode != 200) {
+        debugPrint('[Gemini] 에러 응답: ${response.body}');
         throw Exception('Gemini API 오류: ${response.statusCode}');
       }
 
       final data = jsonDecode(response.body);
       final text = data['candidates'][0]['content']['parts'][0]['text'] as String;
+      debugPrint('[Gemini] 응답 텍스트: ${text.substring(0, text.length > 100 ? 100 : text.length)}...');
       final jsonStr = text.substring(text.indexOf('{'), text.lastIndexOf('}') + 1);
       return jsonDecode(jsonStr) as Map<String, dynamic>;
     }
