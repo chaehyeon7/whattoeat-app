@@ -5,7 +5,7 @@ import 'package:http/http.dart' as http;
 class GeminiService {
   static final _apiKey = dotenv.env['GEMINI_API_KEY'] ?? '';
   static const _baseUrl =
-      'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent';
+      'https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent';
 
   static Future<Map<String, dynamic>> _call(String prompt) async {
     for (int retry = 0; retry < 3; retry++) {
