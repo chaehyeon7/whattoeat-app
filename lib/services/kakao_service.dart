@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'package:flutter/foundation.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:http/http.dart' as http;
 
@@ -27,9 +28,10 @@ class KakaoService {
     });
 
     if (response.statusCode != 200) {
-      final body = response.body;
-      throw Exception('카카오 API 오류 (${response.statusCode}): $body');
+      debugPrint('[Kakao] API 오류 (${response.statusCode}): ${response.body}');
+      throw Exception('카카오 API 오류 (${response.statusCode}): ${response.body}');
     }
+    debugPrint('[Kakao] 검색 성공: ${(jsonDecode(response.body)['documents'] as List).length}개 결과');
 
     final data = jsonDecode(response.body);
     final documents = data['documents'] as List<dynamic>;

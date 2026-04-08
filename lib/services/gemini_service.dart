@@ -18,7 +18,7 @@ class GeminiService {
           'contents': [
             {'parts': [{'text': prompt}]}
           ],
-          'generationConfig': {'temperature': 0.8, 'maxOutputTokens': 1500},
+          'generationConfig': {'temperature': 0.8, 'maxOutputTokens': 4000},
         }),
       );
 
@@ -38,9 +38,24 @@ class GeminiService {
       final data = jsonDecode(response.body);
       final text = data['candidates'][0]['content']['parts'][0]['text'] as String;
       debugPrint('[Gemini] 응답 텍스트: ${text.substring(0, text.length > 100 ? 100 : text.length)}...');
-      final jsonStr = text.substring(text.indexOf('{'), text.lastIndexOf('}') + 1);
-      return jsonDecode(jsonStr) as Map<String, dynamic>;
+      try {
+        var cleaned = text.trim();
+        // ```json ... ``` 마크다운 블록 제거
+        if (cleaned.startsWith('```')) {
+          cleaned = cleaned.substring(cleaned.indexOf('\n') + 1);
+          if (cleaned.endsWith('```')) {
+            cleaned = cleaned.substring(0, cleaned.lastIndexOf('```'));
+          }
+        }
+        cleaned = cleaned.trim();
+        final jsonStr = cleaned.substring(cleaned.indexOf('{'), cleaned.lastIndexOf('}') + 1);
+        return jsonDecode(jsonStr) as Map<String, dynamic>;
+      } catch (e) {
+        debugPrint('[Gemini] JSON 파싱 실패: $e / 원본: $text');
+        rethrow;
+      }
     }
+    debugPrint('[Gemini] 3회 재시도 모두 실패 (429)');
     throw Exception('AI 서버가 바빠요. 잠시 후 다시 시도해주세요');
   }
 
@@ -88,11 +103,16 @@ $ingredientText
     required String cuisine,
     String? price,
     required List<Map<String, dynamic>> restaurants,
+    List<String> excludeNames = const [],
   }) async {
     final restaurantText = restaurants.asMap().entries.map((e) {
       final r = e.value;
       return '${e.key + 1}. ${r['name']} (${r['distance']}m) - ${r['category']}';
     }).join('\n');
+
+    final excludeText = excludeNames.isNotEmpty
+        ? '\n[제외] 다음 음식점은 이미 추천했으니 반드시 제외하세요: ${excludeNames.join(', ')}'
+        : '';
 
     return _call('''
 당신은 점심 메뉴 추천 전문가입니다. 친근하게 추천해주세요.
@@ -104,6 +124,7 @@ ${price != null ? '- 가격대: $price' : ''}
 
 [내 주변 음식점]
 $restaurantText
+$excludeText
 
 위 음식점 중 조건에 가장 맞는 곳 최대 2개를 골라 추천해주세요.
 반드시 아래 JSON 형식으로만 응답하세요. 다른 텍스트 없이 JSON만 출력하세요.

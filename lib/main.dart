@@ -4,7 +4,12 @@ import 'screens/fridge_screen.dart';
 import 'screens/recommend_screen.dart';
 
 Future<void> main() async {
-  await dotenv.load(fileName: ".env");
+  WidgetsFlutterBinding.ensureInitialized();
+  try {
+    await dotenv.load(fileName: ".env");
+  } catch (e) {
+    debugPrint('[Main] .env 로딩 실패: $e');
+  }
   runApp(const WhatToEatApp());
 }
 
@@ -45,7 +50,59 @@ class WhatToEatApp extends StatelessWidget {
           ),
         ),
       ),
-      home: const MainScreen(),
+      home: const SplashScreen(),
+    );
+  }
+}
+
+class SplashScreen extends StatefulWidget {
+  const SplashScreen({super.key});
+
+  @override
+  State<SplashScreen> createState() => _SplashScreenState();
+}
+
+class _SplashScreenState extends State<SplashScreen> {
+  @override
+  void initState() {
+    super.initState();
+    Future.delayed(const Duration(milliseconds: 1500), () {
+      if (mounted) {
+        Navigator.pushReplacement(
+          context,
+          PageRouteBuilder(
+            pageBuilder: (_, __, ___) => const MainScreen(),
+            transitionsBuilder: (_, a, __, child) => FadeTransition(opacity: a, child: child),
+            transitionDuration: const Duration(milliseconds: 400),
+          ),
+        );
+      }
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      body: Container(
+        decoration: const BoxDecoration(
+          gradient: LinearGradient(
+            begin: Alignment.topLeft, end: Alignment.bottomRight,
+            colors: [Color(0xFFFF6B35), Color(0xFFFF8E53)],
+          ),
+        ),
+        child: const Center(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text('🍽️', style: TextStyle(fontSize: 64)),
+              SizedBox(height: 16),
+              Text('뭐먹지', style: TextStyle(fontSize: 32, fontWeight: FontWeight.w800, color: Colors.white)),
+              SizedBox(height: 8),
+              Text('AI가 골라주는 오늘의 메뉴', style: TextStyle(fontSize: 15, color: Colors.white70)),
+            ],
+          ),
+        ),
+      ),
     );
   }
 }

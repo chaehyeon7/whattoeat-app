@@ -3,6 +3,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'dart:convert';
 import '../services/gemini_service.dart';
 import '../services/cook_cache_service.dart';
+import 'recipe_detail_screen.dart';
 
 class FridgeScreen extends StatefulWidget {
   const FridgeScreen({super.key});
@@ -18,7 +19,27 @@ class _FridgeScreenState extends State<FridgeScreen> {
   Map<String, dynamic>? _cookResult;
 
   static const _categories = ['채소', '육류', '해산물', '양념', '기타'];
-  String _selectedCategory = '기타';
+
+  static const _categoryEmojis = {
+    '채소': '🥬', '육류': '🥩', '해산물': '🐟', '양념': '🧂', '기타': '📦',
+  };
+
+  static const _categoryKeywords = {
+    '채소': ['배추', '양배추', '상추', '시금치', '브로콜리', '당근', '감자', '고구마', '양파', '대파', '파', '마늘', '생강', '고추', '피망', '파프리카', '오이', '호박', '가지', '토마토', '무', '콩나물', '숙주', '부추', '깻잎', '미나리', '셀러리', '옥수수', '버섯', '팽이', '새송이', '표고', '느타리', '비트', '연근', '우엉', '청경채', '케일', '양상추', '쪽파', '고구마순', '열무', '깐마늘', '아스파라거스'],
+    '육류': ['소고기', '돼지', '닭', '오리', '양고기', '베이컨', '햄', '소시지', '삼겹살', '목살', '갈비', '안심', '등심', '다짐육', '불고기', '차돌', '곱창', '대창', '막창', '족발', '보쌈', '닭가슴살', '닭다리', '스팸', '육류', '고기', '牛'],
+    '해산물': ['새우', '오징어', '문어', '조개', '홍합', '굴', '전복', '꽃게', '대게', '연어', '참치', '고등어', '갈치', '삼치', '광어', '우럭', '멸치', '미역', '김', '다시마', '어묵', '맛살', '게맛살', '꼬막', '바지락', '해삼', '가리비', '생선', '회', '랍스터'],
+    '양념': ['소금', '설탕', '간장', '된장', '고추장', '식초', '참기름', '들기름', '올리브유', '후추', '고춧가루', '카레', '케첩', '마요네즈', '머스타드', '굴소스', '쌈장', '미림', '맛술', '물엿', '꿀', '버터', '치즈', '크림', '우유', '소스', '드레싱', '식용유', '깨'],
+  };
+
+  static String _classifyCategory(String name) {
+    final lower = name.toLowerCase();
+    for (final entry in _categoryKeywords.entries) {
+      if (entry.value.any((k) => lower.contains(k) || k.contains(lower))) {
+        return entry.key;
+      }
+    }
+    return '기타';
+  }
 
   @override
   void initState() {
@@ -45,9 +66,29 @@ class _FridgeScreenState extends State<FridgeScreen> {
 
   void _addIngredient() {
     final name = _controller.text.trim();
-    if (name.isEmpty) return;
+    if (name.isEmpty || !RegExp(r'[가-힣a-zA-Z]').hasMatch(name)) return;
+    if (_ingredients.length >= 50) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: const Text('재료는 최대 50개까지 등록할 수 있어요!'),
+          behavior: SnackBarBehavior.floating,
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+        ),
+      );
+      return;
+    }
+    if (_ingredients.any((e) => e['name'] == name)) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('\'$name\' 이미 있어요!'),
+          behavior: SnackBarBehavior.floating,
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+        ),
+      );
+      return;
+    }
     setState(() {
-      _ingredients.add({'name': name, 'category': _selectedCategory});
+      _ingredients.insert(0, {'name': name, 'category': _classifyCategory(name)});
       _controller.clear();
     });
     _saveIngredients();
@@ -56,6 +97,40 @@ class _FridgeScreenState extends State<FridgeScreen> {
   void _removeIngredient(int index) {
     setState(() => _ingredients.removeAt(index));
     _saveIngredients();
+  }
+
+  void _editIngredient(int index) {
+    final item = _ingredients[index];
+    final editController = TextEditingController(text: item['name']);
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        title: const Text('재료 수정', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700)),
+        content: TextField(
+          controller: editController,
+          autofocus: true,
+          decoration: InputDecoration(
+            hintText: '재료명',
+            border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+          ),
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('취소')),
+          TextButton(
+            onPressed: () {
+              final newName = editController.text.trim();
+              if (newName.isNotEmpty && RegExp(r'[가-힣a-zA-Z]').hasMatch(newName)) {
+                setState(() => _ingredients[index]['name'] = newName);
+                _saveIngredients();
+              }
+              Navigator.pop(ctx);
+            },
+            child: const Text('저장'),
+          ),
+        ],
+      ),
+    );
   }
 
   void _recommendFromFridge() async {
@@ -86,9 +161,13 @@ class _FridgeScreenState extends State<FridgeScreen> {
       await CookCacheService.save(result, names);
       setState(() => _cookResult = result);
     } catch (e) {
+      debugPrint('[Fridge] 추천 실패: $e');
       if (mounted) {
+        final msg = e.toString().contains('SocketException') || e.toString().contains('ClientException')
+            ? '인터넷 연결을 확인해주세요!'
+            : '추천 실패: $e';
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('추천 실패: $e'), behavior: SnackBarBehavior.floating),
+          SnackBar(content: Text(msg), behavior: SnackBarBehavior.floating),
         );
       }
     } finally {
@@ -140,9 +219,7 @@ class _FridgeScreenState extends State<FridgeScreen> {
                     ),
                     child: Row(
                       children: [
-                        const SizedBox(width: 8),
-                        _buildCategoryDropdown(),
-                        const SizedBox(width: 8),
+                        const SizedBox(width: 12),
                         Expanded(
                           child: TextField(
                             controller: _controller,
@@ -279,7 +356,9 @@ class _FridgeScreenState extends State<FridgeScreen> {
                             runSpacing: 8,
                             children: entry.value.map((item) {
                               final index = _ingredients.indexOf(item);
-                              return Container(
+                              return GestureDetector(
+                                onTap: () => _editIngredient(index),
+                                child: Container(
                                 decoration: BoxDecoration(
                                   color: Colors.white,
                                   borderRadius: BorderRadius.circular(24),
@@ -300,6 +379,7 @@ class _FridgeScreenState extends State<FridgeScreen> {
                                   side: BorderSide.none,
                                   elevation: 0,
                                 ),
+                              ),
                               );
                             }).toList(),
                           ),
@@ -342,7 +422,9 @@ class _FridgeScreenState extends State<FridgeScreen> {
         const SizedBox(height: 10),
         ...recipes.map((r) {
           final recipe = r as Map<String, dynamic>;
-          return Container(
+          return GestureDetector(
+            onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => RecipeDetailScreen(recipe: recipe))),
+            child: Container(
             margin: const EdgeInsets.only(bottom: 12),
             padding: const EdgeInsets.all(16),
             decoration: BoxDecoration(
@@ -398,41 +480,15 @@ class _FridgeScreenState extends State<FridgeScreen> {
                 ],
               ],
             ),
+          ),
           );
         }),
       ],
     );
   }
 
-  Widget _buildCategoryDropdown() {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 8),
-      decoration: BoxDecoration(
-        color: const Color(0xFFF1F2F6),
-        borderRadius: BorderRadius.circular(10),
-      ),
-      child: DropdownButtonHideUnderline(
-        child: DropdownButton<String>(
-          value: _selectedCategory,
-          isDense: true,
-          style: const TextStyle(fontSize: 13, color: Color(0xFF2D3436)),
-          items: _categories
-              .map((c) => DropdownMenuItem(value: c, child: Text(c)))
-              .toList(),
-          onChanged: (v) => setState(() => _selectedCategory = v!),
-        ),
-      ),
-    );
-  }
-
   String _categoryEmoji(String category) {
-    return switch (category) {
-      '채소' => '🥬 채소',
-      '육류' => '🥩 육류',
-      '해산물' => '🐟 해산물',
-      '양념' => '🧂 양념',
-      _ => '📦 기타',
-    };
+    return '${_categoryEmojis[category] ?? '📦'} $category';
   }
 
   @override
